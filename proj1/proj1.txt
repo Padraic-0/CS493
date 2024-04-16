@@ -1,0 +1,302 @@
+POST URL/v1/businesses/ HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer token
+Request:
+    {
+        Business name : "",
+        Business street address : "",
+        Business city : "",
+        Business state : "",
+        Business ZIP code : "",
+        Business phone number : "",
+        Business category : "",
+        subcategories : "",
+        Business website : "opptional",
+        Business email : "opptional",
+        Owner ID : 1
+    }
+
+Response: 
+    {
+        response : 200,
+        id : 1
+    }
+
+______________________________________________________________________________
+
+PUT URL/v1/businesses/ HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer token
+Request:
+    {
+        Business name : "",
+        Business street address : "",
+        Business city : "Bend",
+        Business state : "",
+        Business ZIP code : "",
+        Business phone number : "",
+        Business category : "",
+        subcategories : "",
+        Business website : "opptional",
+        Business email : "opptional"
+    }
+
+Response: 
+    {
+        response : 200,
+        Business city : "Bend"
+    }
+
+______________________________________________________________________________
+
+DELETE URL/v1/businesses/ HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer token
+Request:
+    {
+        Business ID : 1
+    }
+
+Response: 
+    {
+        response : 200,
+        message : "Business has been removed"
+    }
+
+______________________________________________________________________________
+
+GET URL/v1/businesses/ HTTP/1.1
+Content-Type: application/json
+
+Response: 
+    {
+        response : 200,
+        Businesses: {
+            {
+                Business ID : "",
+                Business name : "",
+                Business street address : "",
+                Business city : "",
+                Business state : "",
+                Business ZIP code : "",
+                Business phone number : "",
+                Business category : "",
+                subcategories : "",
+                Business website : "opptional",
+                Business email : "opptional",
+                Owner ID : 1
+            },
+            {
+                Business ID : "",
+                Business name : "",
+                Business street address : "",
+                Business city : "",
+                Business state : "",
+                Business ZIP code : "",
+                Business phone number : "",
+                Business category : "",
+                subcategories : "",
+                Business website : "opptional",
+                Business email : "opptional",
+                Owner ID : 1
+            }...
+        }
+    }
+
+______________________________________________________________________________
+
+GET URL/v1/businesses/{id} HTTP/1.1
+Content-Type: application/json
+
+Response: 
+    {
+        response : 200,
+        Business ID : "",
+        Business name : "",
+        Business street address : "",
+        Business city : "",
+        Business state : "",
+        Business ZIP code : "",
+        Business phone number : "",
+        Business category : "",
+        subcategories : "",
+        Business website : "opptional",
+        Business email : "opptional",
+        Owner ID : 1,
+        
+        Reviews: {
+            {
+                id : "",
+                Author : "",
+                Review : "",
+                Date : "",
+                Star : "",
+                cost : ""
+            },
+            {
+                id : "",
+                Author : "",
+                Review : "",
+                Date : "",
+                Star : "",
+                cost : ""
+            }...
+        }
+
+        Photos: {
+            {
+                id : "",
+                Description : "",
+                Link : "photos/id"
+            },
+            {
+                id : "",
+                Description : "",
+                Link : "photos/id"
+            }...
+
+        }
+    }
+
+______________________________________________________________________________
+
+POST URL/v1/businesses/{id} HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer token
+
+Request: {
+    Author : "",
+    Review : "",
+    Star : "",
+    cost : ""
+}
+
+Response:  {
+    response : 409
+    message : "You may only do one review per business"
+}
+
+______________________________________________________________________________
+
+PUT URL/v1/businesses/{id} HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer token
+
+Request: {
+    Star : "4"
+}
+
+Response:  {
+    response : 200
+    message : "review updated"
+}
+
+______________________________________________________________________________
+
+DELETE URL/v1/businesses/{id} HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer token
+
+Request: {
+    id : "4"
+}
+
+Response:  {
+    response : 200
+    message : "review deleted"
+}
+
+______________________________________________________________________________
+
+GET URL/v1/users/{id}/reviews HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer token
+
+Response:  {
+    response : 200
+    Reviews: {
+            {
+                id : "",
+                Author : "",
+                Review : "",
+                Date : "",
+                Star : "",
+                cost : ""
+            },
+            {
+                id : "",
+                Author : "",
+                Review : "",
+                Date : "",
+                Star : "",
+                cost : ""
+            }...
+        }
+}
+
+______________________________________________________________________________
+
+POST URL/v1/Businesses/{id}/photos HTTP/1.1
+Content-Type: image/png
+Authorization: Bearer token
+
+Request: {
+    png : ###,
+    Description : ""
+}
+
+Response: {
+    response : 200,
+    message : "Image uploaded"
+
+}
+
+______________________________________________________________________________
+
+PUT URL/v1/Businesses/{id}/photos/{id} HTTP/1.1
+Content-Type: image/png
+Authorization: Bearer token
+
+Request: {
+    Description : "changed"
+}
+
+Response: {
+    response : 200,
+    message : "Description changed"
+
+}
+
+______________________________________________________________________________
+
+DELETE URL/v1/Businesses/{id}/photos/{id} HTTP/1.1
+Content-Type: image/png
+Authorization: Bearer token
+
+Response: {
+    response : 200,
+    message : "Image deleted"
+
+}
+
+______________________________________________________________________________
+
+GET URL/v1/users/{id}/photos/ HTTP/1.1
+Content-Type: image/png
+Authorization: Bearer token
+
+Response: {
+    response : 200,
+    Photos: {
+        {
+            id : "",
+            Description : "",
+            Link : "photos/id"
+        },
+        {
+            id : "",
+            Description : "",
+            Link : "photos/id"
+        }...
+    }
+}
