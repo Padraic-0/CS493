@@ -10,8 +10,8 @@ var businesses = [];
 var reviews = [[]];
 var photos = [[]];
 var businesses_id = 0;
-var review_ids = {};
-var photo_ids = {};
+var review_ids = [];
+var photo_ids = [];
 var users = [];
 
 //start listening on that port for connections
