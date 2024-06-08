@@ -291,6 +291,32 @@ app.post("/users/new", async (req, res) => {
     }
 });
 
+app.get("/users/:id", requireAuth, async (req, res) => {
+    console.log("get/users/:id");
+    const user_id = parseInt(req.params.id);
+    if (isNaN(user_id)) {
+        return req.status(400).send({"message": "Not a valid user id"});
+    }
+
+    if (req.user == user_id) {
+        try {
+            const [ query ] = await mysqlPool.query(`SELECT * FROM users where id = ?`, [user_id]);
+            return res.status(200).send({"user": query[0]});
+        } catch (err) {
+            console.log(err.message);
+            return res.status(400).send({"message": "Failed to get user"});
+        }
+    } else {
+        try {
+            const [ query ] = await mysqlPool.query(`SELECT firstname, lastname FROM users where id = ?`, [user_id]);
+            return res.status(200).send({"user": query[0]});
+        } catch (err) {
+            console.log(err.message);
+            return res.status(400).send({"message": "Failed to get user"});
+        }
+    }
+})
+
 function generateAuthToken(user_id) {
     const payload = {"sub": user_id};
     return jwt.sign(payload, secret_key, { "expiresIn": "24h"});

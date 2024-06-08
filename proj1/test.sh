@@ -51,6 +51,16 @@ echo $response2 | json_pp -json_opt pretty,canonical
 echo
 sleep 0.5
 
+status "get user by id as that user"
+curl -X GET http://localhost:8087/users/1 -H "Authorization: Bearer $token1" | json_pp -json_opt pretty,canonical
+echo
+sleep 0.5
+
+status "get user by id NOT as that user"
+curl -X GET http://localhost:8087/users/1 -H "Authorization: Bearer $token2" | json_pp -json_opt pretty,canonical
+echo
+sleep 0.5
+
 status "Create a new business"
 curl -X POST http://localhost:8087/businesses -d '{
     "name": "Paddys Pizza",
