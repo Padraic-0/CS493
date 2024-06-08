@@ -1,4 +1,2 @@
-docker run -it -p 8087:8087 my-app-image
-runs dockerfile
-sh test.sh
-runs tests
+docker-compose up --build #runs the docker image
+sh test.sh    #runs the tests
