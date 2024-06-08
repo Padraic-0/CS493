@@ -1,9 +1,16 @@
 var express = require('express');
+var bcrypt = require('bcryptjs');
 var bodyParser = require('body-parser');
-
+var jwt = require('jsonwebtoken');
+let mysqlPool = null;
+const multer = require('multer');
+const Memstorage = multer.memoryStorage();
+const crypto = require('crypto');
 var app = express();
 
 app.use(bodyParser.json());
+
+const secret_key = process.env.APP_SECRET_KEY;
 
 var port = 8087;
 var businesses = [];
@@ -13,11 +20,240 @@ var businesses_id = 0;
 var review_ids = [];
 var photo_ids = [];
 var users = [];
+var ip_to_user = {};
+
+var rate = 2/1000;
 
 //start listening on that port for connections
 app.listen(port, () => {
         console.log(`Server ready! Listening on port ${port}`);
+        //console.log(mysqlPool);
 });
+
+const mysql = require('mysql2');
+
+const imageTypes = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png'
+  };
+
+const upload = multer({
+    storage: Memstorage,
+    fileFilter: (req, file, callback) => {
+        callback(null, !!imageTypes[file.mimetype]);
+    }
+});
+
+app.use('*', (err, req, res, next) => {
+    console.error(err);
+    res.status(500).send({
+      err: "An error occurred. Try again later."
+    });
+  });
+
+
+function rateLimit(req, res, next) {
+    const user_ip = req.ip;
+    //console.log(req.ip);
+    
+    var user_bucket_data = ip_to_user[user_ip];
+
+    if (!user_bucket_data) {
+        ip_to_user[user_ip] = {
+            "tokens": 5,
+            "last": Date.now()
+        };
+        user_bucket_data = ip_to_user[user_ip];
+    } else {
+        elapsed = Date.now() - user_bucket_data.last;
+        //console.log(elapsed);
+        user_bucket_data.tokens = user_bucket_data.tokens + (elapsed * rate);
+    }
+    //console.log(user_bucket_data)
+    if (user_bucket_data.tokens > 5) {
+        user_bucket_data.tokens = 5;
+    } else if (user_bucket_data.tokens < 0){
+        user_bucket_data.tokens = 0;
+    }
+    //console.log(user_bucket_data)
+    if (user_bucket_data.tokens >= 1) {
+        user_bucket_data.tokens -= 1;
+        user_bucket_data.last = Date.now();
+        //console.log("Good");
+        next();
+    } else {
+        //console.log("bad");
+        return res.status(429).send({"message": "bad limit"});
+    }
+}
+app.use(rateLimit); //throw in main
+  // Perform your database operations here
+  
+  //connection.end(); // Close the connection when done
+async function waitSQL() {
+    return new Promise((resolve, reject) => {
+        let retries = 0;
+    
+  
+    
+        function checkconnection() {
+            console.log("User ", process.env.MYSQL_USER);
+            console.log("Host ", process.env.MYSQL_HOST);
+            console.log("Password ",process.env.MYSQL_PASSWORD);
+            const connection = mysql.createConnection({
+                host: process.env.MYSQL_HOST,
+                user: process.env.MYSQL_USER,
+                password: process.env.MYSQL_PASSWORD,
+                database: process.env.MYSQL_DATABASE
+            });
+            connection.connect((err) => {
+                if (err) {
+                    retries++
+                    if (retries < 10) {
+                        console.log("Retrying connection ", retries);
+                        setTimeout(checkconnection, 5000);
+                    } else {
+                        console.log("Retried 10 times");
+                        connection.end();
+                    }
+                } else {
+                    console.log("Connected!");
+                    connection.end();
+                    resolve();
+                }
+            });
+        }
+        checkconnection();
+    });
+};
+
+
+async function init(x) {
+    if (x == 0) {
+        try{
+            await waitSQL();
+            mysqlPool = require('./mysqlpool.js');
+            console.log("SQL server is ready");
+
+            const connection = mysql.createConnection({
+                host: process.env.MYSQL_HOST,
+                user: process.env.MYSQL_USER,
+                password: process.env.MYSQL_PASSWORD,
+                database: process.env.MYSQL_DATABASE
+            });
+            
+            connection.connect((err) => {
+                if (err) {
+                    console.error('Error connecting to MySQL:', err);
+                    return;
+                }
+                
+                console.log('Connected to MySQL server');
+            });
+        } catch(err) {
+            console.error("Problem connecting to sql server ", err);
+        }
+    }
+    try {
+        await mysqlPool.query(`DROP DATABASE IF EXISTS api_app`);
+        await mysqlPool.query(`CREATE DATABASE api_app`);
+        await mysqlPool.query(`USE api_app`);
+    } catch(err){
+        console.log("problem reseting db", err.message);
+    }
+
+    try {
+        const [ results ] = await mysqlPool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                firstname VARCHAR(255) NOT NULL,
+                lastname VARCHAR(255) NOT NULL,
+                username VARCHAR(255) NOT NULL,
+                password VARCHAR(255) NOT NULL
+            )`);
+                console.log("Users Table created");
+            } catch(err){
+                console.log("Users Table not created", err.message);
+            }
+    try {
+        const [ results ] = await mysqlPool.query(`
+            CREATE TABLE IF NOT EXISTS category (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL
+            )`);
+                console.log("Category Table created");
+            } catch(err){
+                console.log("Category Table not created", err.message);
+            }
+    try {
+        const [ results ] = await mysqlPool.query(`
+            CREATE TABLE IF NOT EXISTS businesses (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                owner_id INT NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                street_address VARCHAR(255) NOT NULL,
+                city VARCHAR(255) NOT NULL,
+                state VARCHAR(255) NOT NULL,
+                zip VARCHAR(255) NOT NULL,
+                phone VARCHAR(255) NOT NULL,
+                category_id INT NOT NULL,
+                website VARCHAR(255),
+                email VARCHAR(255),
+                FOREIGN KEY (owner_id) REFERENCES users(id),
+                FOREIGN KEY (category_id) REFERENCES category(id)
+            )`);
+                console.log("Businesses Table created");
+            } catch(err){
+                console.log("Businesses Table not created", err.message);
+            }
+    try {
+        const [ results ] = await mysqlPool.query(`
+            CREATE TABLE IF NOT EXISTS sub_category (
+                business_id INT NOT NULL,
+                category_id INT NOT NULL,
+                FOREIGN KEY (business_id) REFERENCES businesses(id),
+                FOREIGN KEY (category_id) REFERENCES category(id)
+               
+            )`);
+                console.log("Sub Category Table created");
+            } catch(err){
+                console.log("Sub Category Table not created", err.message);
+            }
+    try {
+        const [ results ] = await mysqlPool.query(`
+            CREATE TABLE IF NOT EXISTS photos (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                business_id INT NOT NULL,
+                user_id INT NOT NULL,
+                photo_name VARCHAR(255) NOT NULL,
+                photo LONGBLOB NOT NULL,
+                type VARCHAR(255) NOT NULL,
+                description VARCHAR(255) NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (business_id) REFERENCES businesses(id)
+            )`);
+                console.log("Photos Table created");
+            } catch(err){
+                console.log("Photos Table not created", err.message);
+            }
+    try {
+        const [ results ] = await mysqlPool.query(`
+            CREATE TABLE IF NOT EXISTS reviews (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                author_id INT NOT NULL,
+                review VARCHAR(255) NOT NULL,
+                star_rating INT NOT NULL,
+                cost VARCHAR(255) NOT NULL,
+                business_id INT NOT NULL,
+                FOREIGN KEY (author_id) REFERENCES users(id),
+                FOREIGN KEY (business_id) REFERENCES businesses(id)
+            )`);
+                console.log("Reviews Table created");
+            } catch(err){
+                console.log("Revies Table not created", err.message);
+            }
+}
+init(0);
 
 function filterDeleted(list) {
     if (list.length == 0) {
@@ -26,9 +262,104 @@ function filterDeleted(list) {
         return list.filter(elm => elm.deleted !==1);
     }
 }
+app.delete("/api/reset", async (req, res) => {
+    init(1);
+    return res.status(200).send({"message": "database reset"});
+});
 
-app.post("/businesses", (req, res, next) => {
+app.post("/api/ratelimit", async (req, res) => {
+    rate = parseFloat(req.body.limit);
+    return res.status(200).send({"rate": rate});
+});
+
+app.post("/users/new", async (req, res) => {
+    console.log("/users/new");
+    const [check] = await mysqlPool.query(`SELECT * FROM users where firstname = ? AND lastname = ?`, [req.body.firstname, req.body.lastname]);
+    if (check.length > 0) {
+        return res.status(400).send({"message": "sorry, your parents named you after someone else :/"});
+    }
+    try {
+        
+        const hashed_password = await bcrypt.hash(req.body.password, 8);
+        console.log("Values:", req.body.firstname, req.body.lastname, req.body.firstname + req.body.lastname, hashed_password);
+
+        const [ results ] = await mysqlPool.query(`INSERT INTO users (firstname, lastname, username, password) VALUES (?, ?, ?, ?)`,
+            [req.body.firstname, req.body.lastname, req.body.firstname + req.body.lastname , hashed_password]);
+        res.status(200).send({"message": "User created"});
+    } catch (err) {
+        console.log("User not created", err.message);
+    }
+});
+
+function generateAuthToken(user_id) {
+    const payload = {"sub": user_id};
+    return jwt.sign(payload, secret_key, { "expiresIn": "24h"});
+}
+
+function requireAuth(req, res, next) {
+    const auth_header = req.get('Authorization') || '';
+    const header_parts = auth_header.split(' ');
+    console.log("auth header:", auth_header);
+    const token = header_parts[0] == "Bearer"? header_parts[1]: null;
+
+    console.log("token: ", token);
+
+    try {
+        const payload = jwt.verify(token, secret_key);
+        req.user = payload.sub;
+        console.log("user: ", req.user);
+        next();
+    } catch ( err ) {
+        console.log(err.message);
+        res.status(401).json({"message": "invalid token"});
+    }
+}
+
+app.post("/login", async (req, res) => {
+    console.log("/login");
+    const [ login ] = await mysqlPool.query(
+        "SELECT * FROM users WHERE username = ?",
+        [req.body.username]);
+
+    if (!login[0]) {
+        return res.status(400).send({"message": "User not found"});
+    }
+
+    const authenticated = await bcrypt.compare(req.body.password, login[0].password);
+
+    if (authenticated) {
+        const token = generateAuthToken(login[0].id);
+        return res.status(200).json({"message": "User logged in", "user": login[0], "token": token});
+    } else {
+        return res.status(400).send({"message": "You're wrong!"});
+    }
+
+});
+
+async function get_category_id(name) {
+    const [ result ] = await mysqlPool.query(`SELECT * FROM category WHERE name = ?`, [name]);
+    if (!result[0]) {
+        const [ insert ] = await mysqlPool.query(`INSERT INTO category (name) VALUES(?)`,[name]);
+        console.log("New category created");
+        return insert.insertId;
+    } else {
+        return result[0].id;
+    }
+}
+
+async function already_a_business(req) {
+    const [ check ] = await mysqlPool.query(`SELECT * FROM businesses WHERE name = ? AND owner_id = ? AND street_address = ? AND city = ? AND state = ? AND zip = ?`,
+    [req.body.name, req.body.owner_id, req.body.address, req.body.city, req.body.state, req.body.zip]);
+    return check.length > 0;
+}
+
+app.post("/businesses", requireAuth, async (req, res, next) => {
     console.log("post/businesses");
+    console.log("auth: ", req.user, req.body.owner_id);
+    if (req.user != req.body.owner_id) {
+        return res.status(403).send({"message": "forbidden"});
+    }
+    let newID = null;
     const requiredAttributes = [
         "name",
         "address",
@@ -37,312 +368,412 @@ app.post("/businesses", (req, res, next) => {
         "zip",
         "phone",
         "category",
-        "subcategories",
         "owner_id",
-        "owner"
     ];
     for (const attr of requiredAttributes) {
-        if (!(attr in req.body) || !req.body[attr]) {
+        if (!(attr in req.body)) {
             console.log(`Missing: ${attr}`);
             return res.status(400).send({"message": "Missing attributes"});
         }
     }
-
-    businesses.push({
-        "id": businesses_id,
-        "name": req.body.name,
-        "address": req.body.address,
-        "city": req.body.city,
-        "state": req.body.state,
-        "zip": req.body.zip,
-        "phone": req.body.phone,
-        "category": req.body.category,
-        "subcategories": req.body.subcategories,
-        "owner_id": req.body.owner_id,
-        "owner": req.body.owner,
-        "deleted" : 0
-    });
+    const category = await get_category_id(req.body.category);
+    if (await already_a_business(req)) {
+        return res.status(400).send({"message": "Already a business"});
+    }
+    try {
+        const [ create_record ] = await mysqlPool.query(`INSERT INTO businesses
+            (name, owner_id, street_address, city, state, zip, phone, category_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.body.name, req.body.owner_id, req.body.address, req.body.city, req.body.state, req.body.zip, req.body.phone, category]);
+        
+        newID = create_record.insertId;
+    } catch ( err ) {
+        console.log(err.message);
+        return res.status(400).send({"message":err.message});
+    }
+    
     if ("website" in req.body) {
-        businesses[businesses_id].website = req.body.website;
+        const website = req.body.website;
+        const [ update_record_website ] = await mysqlPool.query(`UPDATE businesses
+        SET website = ?
+        WHERE id = ?`,
+        [website, newID]);
     }
+
     if ("email" in req.body) {
-        businesses[businesses_id].email = req.body.email;
+        const email = req.body.email;
+        const [ update_record_email ] = await mysqlPool.query(`UPDATE businesses
+        SET email = ?
+        WHERE id = ?`,
+        [email, newID]);
     }
-    review_ids[businesses_id] = 0;
-    photo_ids[businesses_id] = 0;
-    reviews.push([]);
-    photos.push([]);
-    businesses_id += 1;
-    return res.status(200).send({"id": businesses_id});
+
+    return res.status(200).send({"id": newID});
 
 
 });
 
-app.put("/businesses/:id", (req, res, next) => {
+app.put("/businesses/:id", requireAuth, async (req, res, next) => {
     console.log("put/businesses/:id");
+    
     const id = parseInt(req.params.id);
-    if (businesses_id <= id || id < 0) {
+    const [ check ] = await mysqlPool.query(`SELECT * FROM businesses WHERE id = ?`,[id]);
+    if (!check[0]) {
         return res.status(404).send({"message": "Busniness not found"});
     }
-    if ("owner_id" in req.body) {
-        if (req.body.owner_id == businesses[id].owner_id){
-            for (const key in req.body) {
-                businesses[id][key] = req.body[key];
-            }
-            return res.status(200).send({"business": businesses[id]});
-        } else {
-            return res.status(403).send({"message": "Unauthorized"});
-        }
-    } else {
-        return res.status(400).send({"message": "Missing attributes"});
+    if (req.user != check[0].owner_id) {
+        return res.status(403).send({"message": "forbidden"});
+    } 
+    const { name, owner_id, street_address, city, state, zip, phone } = req.body;
+    let category_id = undefined;
+    if (req.body.category) {
+        category_id = await get_category_id(req.body.category);
     }
+    const updates = { name, owner_id, street_address, city, state, zip, phone, category_id };
+    for (const key in check[0]) {
+        if (updates[key] === undefined) {
+            updates[key] = check[0][key];
+        }
+    }
+    try {
+        console.log(updates);
+        const [ updated ] = await mysqlPool.query( `UPDATE businesses SET name = ?, owner_id = ?, street_address = ?, city = ?, state = ?, zip = ?, phone = ?, category_id = ? WHERE id = ?`,
+        [updates.name, updates.owner_id, updates.street_address, updates.city, updates.state, updates.zip, updates.phone, updates.category_id, id]
+        );
+        return res.status(200).send({"message": "business updated"});
+    } catch ( err ) {
+        console.log(err.message);
+        return res.status(400).send({"message": "Failed to update business"});
+    }
+
 });
 
-app.delete("/businesses/:id", (req, res, next) => {
+app.delete("/businesses/:id", requireAuth, async (req, res, next) => {
     console.log("delete/businesses/:id");
     const id = parseInt(req.params.id);
-    if (businesses_id <= id || id < 0) {
+    const [ check ] = await mysqlPool.query(`SELECT * FROM businesses WHERE id = ?`,[id]);
+    if (!check[0]) {
         return res.status(404).send({"message": "Busniness not found"});
     }
-    businesses[id].deleted = 1;
-    return res.status(200).send({"message": `Business ${id} deleted`});
+    if (req.user != check[0].owner_id) {
+        return res.status(403).send({"message": "forbidden"});
+    }
+    try {
+        console.log("Deleting business");
+        const [ deleted ] = await mysqlPool.query(`DELETE FROM businesses WHERE id = ?`,[id]);
+        return res.status(200).send({"message": `Business ${id} deleted`});
+    } catch ( err ) {
+        console.log(err.message);
+        return res.status(400).send({"message": "Failed to delete busniness"});
+    }
 });
 
-app.get("/businesses/:id", (req, res, next) => {
+app.get("/businesses/:id", async (req, res, next) => {
     console.log("get/businesses/:id");
+
     const id = parseInt(req.params.id);
-    if (businesses_id <= id || id < 0) {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const offset = (page - 1) * limit;
+
+    const [ check ] = await mysqlPool.query(`SELECT * FROM businesses WHERE id = ?`,[id]);
+    if (!check[0]) {
         return res.status(404).send({"message": "Busniness not found"});
     }
-    if (businesses[id].deleted == 1) {
-        res.status(404).send({"message": "Business has been deleted"});
+    let reviews, photos;
+    try {
+        [ reviews ] = await mysqlPool.query(`SELECT * FROM reviews WHERE business_id = ? LIMIT ?, ?`,[id, offset, limit]);
+        if (!reviews[0]) {
+            throw new Error("No reviews found");
+        }
+    } catch ( err ) {
+        console.log(err.message);
     }
-    const filtered_reviews = filterDeleted(reviews[id]);
-    const filtered_photos = filterDeleted(photos[id]);
+
+    try {
+        [ photos ] = await mysqlPool.query(`SELECT * FROM photos WHERE business_id = ? LIMIT ?, ?`,[id, offset, limit]);
+        if (!photos[0]) {
+            throw new Error("No photos found");
+        }
+    } catch ( err ) {
+        console.log(err.message);
+    }
+
     return res.status(200).send({
-        "business": businesses[id],
-        "reviews": filtered_reviews || [],
-        "photos": filtered_photos || []
+        "business": check[0],
+        "reviews": reviews || [],
+        "photos": photos || []
         });
 });
 
-app.get("/businesses", (req, res, next) => {
-    const filtered_businesses = filterDeleted(businesses);
-    return res.status(200).send({"businesses": filtered_businesses});
+app.get("/businesses", async (req, res, next) => {
+    console.log("/businesses");
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const offset = (page - 1) * limit;
+
+    try {
+        const [ businesses ] = await mysqlPool.query(`SELECT * FROM businesses LIMIT ?, ?`,[offset,limit]);
+        return res.status(200).send({
+            "businesses": businesses,
+            "page": page,
+            "limit": limit
+        });
+    } catch ( err ) {
+        console.log(err.message);
+        return res.status(400).send({"message": "Failed to get businesses"});
+    }
 });
 
-app.post("/businesses/reviews", (req, res, next) => {
+app.post("/businesses/reviews", requireAuth, async (req, res, next) => {
     console.log("post/businesses/reviews");
     const requiredAttributes = [
         "business_id",
         "author",
         "author_id",
         "review",
-        "star",
+        "star_rating",
         "cost"
     ];
     for (const attr of requiredAttributes) {
-        if (!(attr in req.body) || !req.body[attr]) {
+        if (!(attr in req.body)) {
             console.log(`Missing: ${attr}`);
             return res.status(400).send({"message": 'Missing attributes'});
         }
     }
     const business_id = parseInt(req.body.business_id);
     const author_id = parseInt(req.body.author_id);
-
-    if (author_id == businesses[business_id].owner_id) {
-        return res.status(400).send({"message": `${businesses[business_id].owner}, you can't review your own business!`});
+    if (req.user != author_id) {
+        return res.status(403).send({"message": "forbidden"});
     }
-
-    for (const review of reviews[business_id]) {
-        if (author_id == review.author_id) {
-            return res.status(400).send({"message": "You may only write one review per business"});
-        }
-    }
-    reviews[business_id].push({
-        "id": review_ids[business_id],
-        "business_id": req.body.business_id,
-        "author": req.body.author,
-        "author_id": req.body.author_id,
-        "review": req.body.review,
-        "star": req.body.star,
-        "cost": req.body.cost,
-        "deleted": 0
-    })
-    review_ids[business_id] += 1;
-    return res.status(200).send({"review": reviews[business_id][reviews[business_id].length -1]});
-
-});
-
-app.put("/businesses/reviews/:business_id/:review_id", (req, res, next) => {
-    console.log("put/businesses/reviews");
-    const business_id = parseInt(req.params.business_id);
-    const review_id = parseInt(req.params.review_id);
-    if (businesses_id <= business_id || business_id < 0) {
+    const [ check ] = await mysqlPool.query(`SELECT * FROM businesses WHERE id = ?`,[business_id]);
+    if (!check[0]) {
         return res.status(404).send({"message": "Busniness not found"});
     }
-    if (review_ids[business_id] <= review_id || review_id < 0) {
-        return res.status(404).send({"message": "Review not found"});
+    if (check[0].owner_id == author_id) {
+        return res.status(400).send({"message": "You can't review your own business"});
     }
-    for (const key in req.body) {
-        reviews[business_id][review_id][key] = req.body[key];
+
+    const [ reviews ] = await mysqlPool.query(`SELECT * FROM reviews WHERE business_id = ? AND author_id = ?`,[business_id, author_id]);
+    if (reviews[0]) {
+        return res.status(400).send({"message": "You can only write one review per business"});
     }
-    return res.status(200).send({"review": reviews[business_id][review_id]});
+
+    try {
+        const [ create_record ] = await mysqlPool.query(`INSERT INTO reviews
+            (author_id, review, star_rating, cost, business_id) VALUES (?, ?, ?, ?, ?)`,
+            [author_id, req.body.review, req.body.star_rating, req.body.cost, business_id]);
+        
+        newID = create_record.insertId;
+    } catch ( err ) {
+        console.log(err.message);
+        return res.status(400).send({"message":err.message});
+    }
+    
+    return res.status(200).send({"message": "review posted"});
 
 });
 
-app.get("/businesses/reviews/:business_id", (req, res, next) => {
+app.put("/businesses/reviews/:review_id", requireAuth, async (req, res, next) => {
+    console.log("put/businesses/reviews");
+    const review_id = parseInt(req.params.review_id);
+    const [ check ] = await mysqlPool.query(`SELECT * FROM reviews WHERE id = ? `,[review_id]);
+    if (!check[0]) {
+        return res.status(404).send({"message": "review not found"});
+    }
+    if (req.user != check[0].author_id) {
+        return res.status(403).send({"message": "forbidden"});
+    }
+    const { review, star_rating} = req.body;
+    const updates = { review, star_rating};
+    for (const key in check[0]) {
+        if (updates[key] === undefined) {
+            updates[key] = check[0][key];
+        }
+    }
+    try {
+        console.log(updates);
+        const [ updated ] = await mysqlPool.query( `UPDATE reviews SET review = ?, star_rating = ? WHERE id = ?`,
+        [updates.review, updates.star_rating, review_id]
+        );
+        return res.status(200).send({"message": "review updated"});
+    } catch ( err ) {
+        console.log(err.message);
+        return res.status(400).send({"message": "Failed to update review"});
+    }
+
+});
+
+app.get("/businesses/reviews/:business_id", async (req, res, next) => {
     console.log("get/businesses/reviews/:business_id");
     const business_id = parseInt(req.params.business_id);
     console.log(business_id);
-    if (businesses_id <= business_id || business_id < 0) {
-        return res.status(404).send({"message": "Business not found"});
+
+    const [ check ] = await mysqlPool.query(`SELECT * FROM reviews WHERE business_id = ? `,[business_id]);
+    if (!check[0]) {
+        return res.status(404).send({"message": "reviews not found"});
     }
-    if (businesses[business_id].deleted == 1) {
-        return res.status(400).send({"message": "Business deleted"});
-    }
-    const filted_reviews = filterDeleted(reviews[business_id]);
-    console.log("here");
+
     return res.status(200).send({
-        "business": businesses[business_id].name,
-        "reviews": filted_reviews[business_id] || []
+        "reviews": check || []
     });
 });
 
-app.delete("/businesses/reviews/:business_id/:review_id", (req, res, next) =>{
+app.delete("/businesses/reviews/:review_id", requireAuth, async (req, res, next) =>{
     console.log("delete/businesses/reviews");
-    const business_id = parseInt(req.params.business_id);
     const review_id = parseInt(req.params.review_id);
-    if (businesses_id <= business_id || business_id < 0) {
-        return res.status(404).send({"message": "Business not found"});
+    const [ check ] = await mysqlPool.query(`SELECT * FROM reviews WHERE id = ?`,[review_id]);
+    if (!check[0]) {
+        return res.status(404).send({"message": "reviews not found"});
+    } else if (req.user != check[0].author_id) {
+        return res.status(403).send({"message": "forbidden"});
     }
-    if (businesses[business_id].deleted == 1) {
-        return res.status(400).send({"message": "Business deleted"});
-    }
-    if (review_ids[business_id] <= review_id || review_id < 0) {
-        return res.status(404).send({"message": "Review not found"});
-    }
-    reviews[business_id][review_id].deleted = 1;
-    return res.status(200).send({"message": "Review deleted"})
-});
-
-app.get("/users/reviews/:user_id" , (req, res, next) => {
-    console.log("get/users/reviews/:user_id");
-    const user_id = parseInt(req.params.user_id);
-
-    const user_reviews = reviews.map(business => 
-        business.filter(review => 
-            (review.deleted !==1 && review.author_id == user_id)
-        )
-    );
-    if (user_reviews.flat().length == 0){
-        return res.status(404).send({"message": "User not found"});
+    const [ query ] = await mysqlPool.query(`DELETE FROM reviews WHERE id = ? `,[review_id]);
+    if (query.affectedRows === 0) {
+        return res.status(404).send({"message": "Failed to delete review"});
     } else {
-        return res.status(200).send({"user_reviews":user_reviews.flat()});
+    return res.status(200).send({"message": "Review deleted"});
     }
 });
 
-app.post("/businesses/photos" , (req, res, next) =>{
+app.get("/users/reviews/:author_id" , requireAuth, async (req, res, next) => {
+    console.log("get/users/reviews/:author_id");
+
+    const author_id = parseInt(req.params.author_id);
+    if (req.user != author_id) {
+        return res.status(403).send({"message": "forbidden"});
+    }
+    const [ author_reviews ] = await mysqlPool.query(`SELECT * FROM reviews WHERE author_id = ?`,[author_id]);
+    if (!author_reviews[0]){
+        return res.status(404).send({"message": "Reviews not found"});
+    } else {
+        return res.status(200).send({"author_reviews": author_reviews});
+    }
+});
+
+app.get("businesses/photos/:id", (req, res, next) => {
+    const path = `${__dirname}/uploads/${req.params.id}`;
+    res.setHeader("Content-Type", "image/jpeg").sendFile(path);
+})
+
+app.post("/businesses/photos", requireAuth, upload.single('photo'), async (req, res, next) =>{
     console.log("post/businesses/photos");
+    console.log("body ", req.body);
     const requiredAttributes = [
         "business_id",
-        "link",
+        "user_id",
         "description"
     ];
     for (const attr of requiredAttributes) {
-        if (!(attr in req.body) || !req.body[attr]) {
+        if (!(attr in req.body)) {
             console.log(`Missing: ${attr}`);
             return res.status(400).send({"message": 'Missing attributes'});
         }
     }
+    if (req.user != req.body.user_id) {
+        return res.status(403).send({"message": "forbidden"});
+    }
     const business_id = parseInt(req.body.business_id);
-    if (businesses.length <= business_id || business_id < 0) {
+
+    const [ check ] = await mysqlPool.query(`SELECT * FROM businesses WHERE id = ?`,[business_id]);
+    if (!check[0]){
         return res.status(404).send({"message": "Business not found"});
     }
-    if (businesses[business_id].deleted == 1) {
-        return res.status(400).send({"message": "Business deleted"});
+    const photo_buffer = req.file.buffer;
+    const filename = req.file.originalname;
+    const extension = imageTypes[req.file.mimetype];
+    if (!extension) {
+        return res.status(400).send({"message": "Invalid file type"});
+    }
+
+    try {
+        const [ post_photo ] = await mysqlPool.query(`INSERT INTO photos
+            (business_id, user_id, photo_name, photo, type, description) VALUES (?, ?, ?, ?, ?, ?)`,
+            [business_id, req.body.user_id, filename, photo_buffer, req.file.mimetype, req.body.description]);
+        
+        newID = post_photo.insertId;
+    } catch ( err ) {
+        console.log(err.message);
+        return res.status(400).send({"message":err.message});
     }
     
-    photos[business_id].push({
-        "review_id": review_ids[business_id],
-        "business_id": req.body.business_id,
-        "link": req.body.link,
-        "description":  req.body.description,
-        "deleted": 0
-    });
-    photo_ids[business_id] += 1;
-    res.status(200).send({"photo": photos[business_id][photos[business_id].length -1]});
+    return res.status(200).send({"message": "Photo posted", "photo_id": newID, "filename": filename});
 
 });
 
-app.put("/businesses/photos/:business_id/:photo_id" , (req, res, next) =>{
-    console.log("put/businesses/photos/:business_id/:photo_id");
-    const business_id = parseInt(req.params.business_id);
+app.put("/businesses/photos/:photo_id", requireAuth, async (req, res, next) => {
+    console.log("put/businesses/photos/:photo_id");
+    
     const photo_id = parseInt(req.params.photo_id);
-    if (businesses_id <= business_id || business_id < 0) {
-        return res.status(404).send({"message": "Business not found"});
+    const [ check ] = await mysqlPool.query(`SELECT photo_name, description, user_id FROM photos WHERE id = ? `,[photo_id]);
+    if (!check[0]) {
+        return res.status(404).send({"message": "photo not found"});
     }
-    if (businesses[business_id].deleted == 1) {
-        return res.status(400).send({"message": "Business deleted"});
+    if (req.user !== check[0].user_id) {
+        return res.status(403).send({"message": "forbidden"});
     }
-    if (photo_id[business_id] <= photo_id || photo_id < 0) {
-        return res.status(404).send({"message": "Photo not found"});
+    
+    const {photo_name, description} = req.body;
+    const updates = { photo_name, description};
+    for (const key in check[0]) {
+        if (updates[key] === undefined) {
+            updates[key] = check[0][key];
+        }
     }
-    if (photos[business_id].deleted == 1) {
-        return res.status(400).send({"message": "Photo deleted"});
+    try {
+        console.log(updates);
+        const [ updated ] = await mysqlPool.query( `UPDATE photos SET photo_name = ?, description = ? WHERE id = ?`,
+        [updates.photo_name, updates.description, photo_id]
+        );
+        return res.status(200).send({"message": "photo updated"});
+    } catch ( err ) {
+        console.log(err.message);
+        return res.status(400).send({"message": "Failed to update photo"});
     }
-    if ("description" in req.body) {
-        photos[business_id][photo_id].description = req.body.description;
-        return res.status(200).send({"message": "Description updated"})
+
+});
+
+app.delete("/businesses/photos/:photo_id" ,requireAuth, async (req, res, next) =>{
+    console.log("delete/businesses/photos/:photo_id");
+    const photo_id = parseInt(req.params.photo_id);
+    console.log("photo id", photo_id);
+    console.log("user id ", req.user);
+    const [ check ] = await mysqlPool.query(`DELETE FROM photos WHERE id = ? AND user_id = ?`,[photo_id, req.user]);
+    if (check.affectedRows === 0) {
+        return res.status(404).send({"message": "photo not found", "user": req.user});
     } else {
-        return res.status(400).send({"message": "Missing attribute"})
+    return res.status(200).send({"message": "photo deleted"});
     }
 });
 
-app.delete("/businesses/photos/:business_id/:photo_id" , (req, res, next) =>{
-    console.log("delete/businesses/photos/:business_id/:photo_id");
-    const business_id = parseInt(req.params.business_id);
+app.get("/businesses/photos/:photo_id", async (req, res, next) =>{
+    console.log("get/businesses/photos/:photo_id");
     const photo_id = parseInt(req.params.photo_id);
-    if (isNaN(business_id) || isNaN(photo_id)) {
+    if (isNaN(photo_id)) {
         return res.status(400).send({"message": "fix format"});
     } else {
-        photos[business_id][photo_id].deleted == 1;
-        return res.status(200).send({"message": "photo deleted"});
-    }
-});
-
-app.get("/businesses/photos/:business_id/:photo_id", (req, res, next) =>{
-    console.log("get/businesses/photos/:business_id/:photo_id");
-    const business_id = parseInt(req.params.business_id);
-    const photo_id = parseInt(req.params.photo_id);
-    if (isNaN(business_id) || isNaN(photo_id)) {
-        return res.status(400).send({"message": "fix format"});
-    } else {
-        if (businesses_id <= business_id || photo_ids[business_id] <= photo_id || photo_id < 0 || business_id < 0){
-            return res.status(400).send({"message": "Not valid business or id"});
-        } else{
-            const photo = photos[business_id][photo_id];
-            if (photo.deleted == 1) {
-                return res.status(400).send({"message": "Photo deleted"});
-            } else {
-                return res.status(200).send({"photo": photo});
-            }
+        const [ photo ] = await mysqlPool.query(`SELECT * FROM photos WHERE id = ?`,[photo_id]);
+        if (!photo[0]){
+            return res.status(404).send({"message": "photo not found"});
+        } else {
+            return res.setHeader("Content-Type", photo[0].type).send(photo[0].photo);
         }
         
     }
 });
 
-app.get("/businesses/photos/:business_id", (req, res, next) =>{
+app.get("/businesses/photos/all/:business_id",async (req, res, next) =>{
     console.log("get/businesses/photos/:business_id");
     const business_id = parseInt(req.params.business_id);
     if (isNaN(business_id)) {
         return res.status(400).send({"message": "fix format"});
     } else {
-        if (businesses_id <= business_id || business_id < 0){
-            return res.status(400).send({"message": "Not valid business"});
-        } else{
-            const filtered_photos = filterDeleted(photos[business_id]);
-            return res.status(200).send({"photos": filtered_photos});
+        const [ photos ] = await mysqlPool.query(`SELECT id FROM photos WHERE business_id = ?`,[business_id]);
+        if (!photos[0]){
+            return res.status(404).send({"message": "photos not found"});
+        } else {
+            return res.status(200).send({"photos":photos});
         }
         
     }

@@ -1,0 +1,35 @@
+version: '3'
+
+services:
+  api:
+    build: .
+    environment:
+      MYSQL_HOST: 'proj1-mysql-server-1'
+      MYSQL_PORT: '3306'
+      MYSQL_DATABASE: 'api_app'
+      MYSQL_USER: 'api_user'
+      MYSQL_PASSWORD: 'password'
+      APP_SECRET_KEY: 'dogs'
+    ports:
+      - "8087:8087"
+    networks:
+      - mysql-net
+    depends_on:
+      - mysql-server
+
+  mysql-server:
+    image: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 'password'
+      MYSQL_DATABASE: 'api_app'
+      MYSQL_USER: 'api_user'
+      MYSQL_PASSWORD: 'password'
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql-data:/var/lib/mysql3
+    networks:
+      - mysql-net
+networks:
+  mysql-net:
+    driver: bridge

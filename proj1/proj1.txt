@@ -300,3 +300,8 @@ Response: {
         }...
     }
 }
+
+ulu7ocd4TlwgpSECLuFJ818yiJ5VhV0K
+
+export MONGO_USER=your_username
+export MONGO_PASSWORD=your_password
