@@ -517,7 +517,7 @@ app.get("/businesses/:id", async (req, res, next) => {
     }
 
     try {
-        [ photos ] = await mysqlPool.query(`SELECT * FROM photos WHERE business_id = ? LIMIT ?, ?`,[id, offset, limit]);
+        [ photos ] = await mysqlPool.query(`SELECT id FROM photos WHERE business_id = ? LIMIT ?, ?`,[id, offset, limit]);
         if (!photos[0]) {
             throw new Error("No photos found");
         }
