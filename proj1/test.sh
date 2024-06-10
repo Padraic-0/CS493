@@ -219,6 +219,11 @@ curl -X GET http://localhost:8087/businesses/photos/1 -o downloaded_photo.jpg
 echo
 sleep 0.5
 
+status "Get Photo Thumbnail by Id"
+curl -X GET http://localhost:8087/businesses/photos/thumbnail/1 -o downloaded_thumbnail.jpg
+echo
+sleep 0.5
+
 status "Get photos of business"
 curl -X GET http://localhost:8087/businesses/photos/all/1 -H "Content-Type: application/json"| json_pp -json_opt pretty,canonical
 echo
@@ -254,3 +259,10 @@ do
     message=$(echo $response | jq -r '.message')
     echo "message: $message"
 done
+
+status "Change rate limit for testing"
+curl -X POST http://localhost:8087/api/ratelimit -d '{
+    "limit": "2000"
+}' -H 'Content-Type: application/json' | json_pp -json_opt pretty,canonical
+echo
+sleep 0.5

@@ -1,6 +1,13 @@
 version: '3'
 
 services:
+  rabbitmq:
+      image: rabbitmq
+      networks:
+        - mysql-net
+      ports:
+        - "5672:5672"
+
   api:
     build: .
     environment:
@@ -30,6 +37,31 @@ services:
       - ./mysql-data:/var/lib/mysql3
     networks:
       - mysql-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  consumer:
+    build: .
+    command: ["node", "consumer.js"]
+    environment:
+      MYSQL_HOST: 'proj1-mysql-server-1'
+      MYSQL_PORT: '3306'
+      MYSQL_DATABASE: 'api_app'
+      MYSQL_USER: 'api_user'
+      MYSQL_PASSWORD: 'password'
+    networks:
+      - mysql-net
+    depends_on:
+      - rabbitmq
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://rabbitmq:15672"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 networks:
   mysql-net:
     driver: bridge

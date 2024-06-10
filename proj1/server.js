@@ -7,8 +7,8 @@ const multer = require('multer');
 const Memstorage = multer.memoryStorage();
 const crypto = require('crypto');
 var app = express();
-
 app.use(bodyParser.json());
+const amqp = require('amqplib');
 
 const secret_key = process.env.APP_SECRET_KEY;
 
@@ -31,6 +31,23 @@ app.listen(port, () => {
 });
 
 const mysql = require('mysql2');
+
+async function sendtoqueue(photo_id) {
+    const [ photo ] = await mysqlPool.query(`SELECT * FROM photos WHERE id = ?`,[photo_id]);
+    if (!photo){
+        return
+    }
+    const photo_blob = photo[0].photo;
+    const rmqConnection = await amqp.connect('amqp://rabbitmq:5672');
+    const channel = await rmqConnection.createChannel();
+    const queue = 'thumbnail_processing';
+
+    await channel.assertQueue(queue, { durable: true });
+    channel.sendToQueue(queue, Buffer.from(photo_blob), { persistent: true, headers: { photo_id: photo_id } });
+    console.log("processing image");
+    await channel.close();
+    await rmqConnection.close();
+};
 
 const imageTypes = {
     'image/jpeg': 'jpg',
@@ -228,6 +245,7 @@ async function init(x) {
                 photo_name VARCHAR(255) NOT NULL,
                 photo LONGBLOB NOT NULL,
                 type VARCHAR(255) NOT NULL,
+                thumbnail LONGBLOB,
                 description VARCHAR(255) NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 FOREIGN KEY (business_id) REFERENCES businesses(id)
@@ -719,6 +737,7 @@ app.post("/businesses/photos", requireAuth, upload.single('photo'), async (req, 
             [business_id, req.body.user_id, filename, photo_buffer, req.file.mimetype, req.body.description]);
         
         newID = post_photo.insertId;
+        await sendtoqueue(newID);
     } catch ( err ) {
         console.log(err.message);
         return res.status(400).send({"message":err.message});
@@ -784,6 +803,22 @@ app.get("/businesses/photos/:photo_id", async (req, res, next) =>{
             return res.status(404).send({"message": "photo not found"});
         } else {
             return res.setHeader("Content-Type", photo[0].type).send(photo[0].photo);
+        }
+        
+    }
+});
+
+app.get("/businesses/photos/thumbnail/:photo_id", async (req, res, next) =>{
+    console.log("get/businesses/photos/thumbnail/:photo_id");
+    const photo_id = parseInt(req.params.photo_id);
+    if (isNaN(photo_id)) {
+        return res.status(400).send({"message": "fix format"});
+    } else {
+        const [ photo ] = await mysqlPool.query(`SELECT id, business_id, user_id, type, description, thumbnail FROM photos WHERE id = ?`,[photo_id]);
+        if (!photo[0]){
+            return res.status(404).send({"message": "photo not found"});
+        } else {
+            return res.setHeader("Content-Type", photo[0].type).send(photo[0].thumbnail);
         }
         
     }
