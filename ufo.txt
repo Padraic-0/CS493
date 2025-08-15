@@ -1,0 +1,35 @@
+GET v1/list_sightings/{zipcode/(lat/long){date}{status}}
+    return all sightings in area with their id
+
+POST v1/new_sighting/
+    data:
+    {zipcode/(lat/long){data}{status}}
+    return sighting id
+
+UPDATE v1/update_sighting/{id}{status}
+    update sighting
+
+
+do_something(() => {
+    do_soemthing_else(() => {
+        ....
+    });
+}); #call back hell
+
+#instead do this
+
+do_something()
+    .then(do)
+    .then(do2)
+
+#or better
+
+async function foo() {
+    const [ results ] = await mysqlPool.query(
+        "SELECT COUNt(*) AS count FROM lodgings"  
+    );
+
+    return results[0].count;
+
+}
+

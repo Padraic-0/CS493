@@ -1,0 +1,81 @@
+curl -X POST http://localhost:8087/businesses -d '{"name": "Paddys pizza",
+        "address": "Home",
+        "city": "Bend",
+        "state": "OR",
+        "zip": "07701",
+        "phone": "541",
+        "category": "Pizza",
+        "subcategories": "microwaved",
+        "owner_id": "1",
+        "owner": "Paddy"}' -v -H 'Content-Type: application/json'
+
+curl -X GET 'http://localhost:8087/businesses/1'
+curl -X PUT http://localhost:8087/businesses/0 -d '{"owner_id": 1, "name": "Not anymore"}' -v -H 'Content-Type: application/json'
+curl -X GET 'http://localhost:8087/businesses/reviews/0'
+curl -X GET 'http://localhost:8087/businesses'
+curl -X POST http://localhost:8087/businesses/reviews --data '{"business_id": "0", "author": "paddy", "author_id": "4", "review": "bad", "star": "2", "cost": "$$$"}' -v -H 'Content-Type: application/json'
+curl -X PUT http://localhost:8087/businesses/reviews/0/0 -d '{"author": "Bob" }' -v -H 'Content-Type: application/json'
+
+curl -X POST http://localhost:8087/businesses -d '{
+    "name": "Paddys Pizza",
+    "address": "123 Main St",
+    "city": "Bend",
+    "state": "OR",
+    "zip": "97701",
+    "phone": "541-555-1234",
+    "category": "Pizza",
+    "subcategories": "Microwaved",
+    "owner_id": "1",
+    "owner": "Paddy"
+}' -H 'Content-Type: application/json'
+
+curl -X PUT http://localhost:8087/businesses/0 -d '{
+    "owner_id": "1",
+    "name": "Paddys New Pizza Place"
+}' -H 'Content-Type: application/json'
+
+curl -X DELETE http://localhost:8087/businesses/0
+
+curl -X GET http://localhost:8087/businesses/0
+
+curl -X GET http://localhost:8087/businesses
+
+curl -X POST http://localhost:8087/businesses/reviews -d '{
+    "business_id": "0",
+    "author": "John Doe",
+    "author_id": "2",
+    "review": "Great pizza!",
+    "star": "5",
+    "cost": "$$"
+}' -H 'Content-Type: application/json'
+
+curl -X PUT http://localhost:8087/businesses/reviews/0/0 -d '{
+    "review": "Updated review!"
+}' -H 'Content-Type: application/json'
+
+curl -X GET http://localhost:8087/businesses/reviews/0
+
+curl -X DELETE http://localhost:8087/businesses/reviews/0/0
+
+curl -X GET http://localhost:8087/users/reviews/2
+
+curl -X POST http://localhost:8087/businesses/photos -d '{
+    "business_id": "0",
+    "link": "http://example.com/image.jpg",
+    "description": "Delicious pizza!"
+}' -H 'Content-Type: application/json'
+
+curl -X PUT http://localhost:8087/businesses/photos/0/0 -d '{
+    "description": "New description"
+}' -H 'Content-Type: application/json'
+
+curl -X DELETE http://localhost:8087/businesses/photos/0/0
+
+curl -X GET http://localhost:8087/users/photos/0
+
+curl -X GET http://localhost:8087/users/photos/0/0
+
+
+
+
+

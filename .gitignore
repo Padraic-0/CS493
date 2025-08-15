@@ -1,0 +1,17 @@
+data/
+datasets/
+wandb/
+chkpts/
+__pycache__/
+*.zip
+*.tar
+*.gz
+*.mp4
+*.mp3
+*.mov
+*.avi
+*.iso
+*.csv
+*.parquet
+*.pdf
+.env
